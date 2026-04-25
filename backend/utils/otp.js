@@ -10,31 +10,50 @@ const getOTPExpiry = () => {
   return expiry;
 };
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // Use gmail or specify SMTP details
-  auth: {
-    user: process.env.SMTP_EMAIL,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+// Global transporter instance
+let transporter = null;
+
+const getTransporter = async () => {
+  if (transporter) return transporter;
+
+  // 1. Use real SMTP if user provided it in their .env
+  if (process.env.SMTP_EMAIL && process.env.SMTP_EMAIL !== 'your_email@gmail.com') {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_EMAIL,
+        pass: process.env.SMTP_PASSWORD,
+      },
+    });
+    return transporter;
+  }
+
+  // 2. Fallback to Ethereal Test Email automatically for development if not configured!
+  console.log('⚠️ Real SMTP not configured in .env. Automatically generating a free test email account...');
+  const testAccount = await nodemailer.createTestAccount();
+  transporter = nodemailer.createTransport({
+    host: 'smtp.ethereal.email',
+    port: 587,
+    secure: false, 
+    auth: {
+      user: testAccount.user, // generated ethereal test user
+      pass: testAccount.pass, // generated ethereal test password
+    },
+  });
+  return transporter;
+};
 
 const sendOTP = async (email, name, otp, role) => {
   const roleDisplay = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'User';
   
-  // Console-based OTP delivery (development mode fallback if email not configured)
+  // Console-based OTP delivery (development mode redundancy)
   console.log('\n========================================');
   console.log(`🔐 OTP for ${name} (${email}): ${otp}`);
   console.log(`⏰ Valid for 2 minutes`);
   console.log('========================================\n');
 
-  if (!process.env.SMTP_EMAIL || process.env.SMTP_EMAIL === 'your_email@gmail.com') {
-    console.log('⚠️ SMTP Credentials not provided, skipping actual email delivery.');
-    return true; 
-  }
-
   const mailOptions = {
-    from: `"Food Bridge System" <${process.env.SMTP_EMAIL}>`,
+    from: `"Food Bridge System" <${process.env.SMTP_EMAIL && process.env.SMTP_EMAIL !== 'your_email@gmail.com' ? process.env.SMTP_EMAIL : 'noreply@foodbridge.com'}>`,
     to: email,
     subject: `Your Food Bridge Login Verification Code`,
     html: `
@@ -66,12 +85,18 @@ const sendOTP = async (email, name, otp, role) => {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    const activeTransporter = await getTransporter();
+    const info = await activeTransporter.sendMail(mailOptions);
     console.log('📧 OTP Email sent successfully to:', email);
+    
+    // Crucial: print the Ethereal link to view the mocked email in the terminal directly!
+    const testUrl = nodemailer.getTestMessageUrl(info);
+    if (testUrl) {
+      console.log('🌐 VIEW LIVE EMAIL IN BROWSER HERE -> %s', testUrl);
+    }
     return true;
   } catch (error) {
     console.error('❌ Error sending OTP Email:', error);
-    // return false or throw error if desired, returning true for development fallback
     return true; 
   }
 };
