@@ -134,7 +134,7 @@ const login = async (req, res, next) => {
     user.otpExpiry = getOTPExpiry();
     await user.save({ validateBeforeSave: false });
 
-    await sendOTP(user.email, user.name, otp);
+    await sendOTP(user.email, user.name, otp, user.role);
 
     res.json({
       success: true,
@@ -209,7 +209,7 @@ const resendOTP = async (req, res, next) => {
     user.otpExpiry = getOTPExpiry();
     await user.save({ validateBeforeSave: false });
 
-    await sendOTP(user.email, user.name, otp);
+    await sendOTP(user.email, user.name, otp, user.role);
 
     res.json({ success: true, message: 'OTP resent successfully' });
   } catch (err) {
